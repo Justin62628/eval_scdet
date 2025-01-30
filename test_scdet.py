@@ -8,17 +8,17 @@ import numpy as np
 import pytest
 from tqdm import tqdm
 
-# from Utils.scdet import TransitionDetectionBase, TransitionDetectionHSV
+from Utils.scdet import TransitionDetectionBase, TransitionDetectionHSV # type: ignore
 
 
-# class TestTransitionDetection(TransitionDetectionBase):
-#     def save_scene(self, title):
-#         pass
+class TestTransitionDetection(TransitionDetectionBase):
+    def save_scene(self, title):
+        pass
 
 
-# class TestTransitionDetectionHSV(TransitionDetectionHSV):
-#     def save_scene(self, title):
-#         pass
+class TestTransitionDetectionHSV(TransitionDetectionHSV):
+    def save_scene(self, title):
+        pass
 
 
 class TestPyScdet:
@@ -133,10 +133,9 @@ class ValCaseThread(threading.Thread):
                 self.styler_inst = TestStyler(*self.args, **self.kwargs)
             return self.styler_inst
 
-        # return {
-        #         'svfi': TestTransitionDetection,
-        #         'svfi_hsv': TestTransitionDetectionHSV,
-        #         'pyscdet': TestPyScdet}[self.scdet_method](*self.args, **self.kwargs)
+        return {'svfi': TestTransitionDetection,
+                'svfi_hsv': TestTransitionDetectionHSV,
+                'pyscdet': TestPyScdet}[self.scdet_method](*self.args, **self.kwargs)
 
     def run(self) -> None:
         while True:
@@ -147,11 +146,8 @@ class ValCaseThread(threading.Thread):
             scene = scene.strip()
             scene_path = os.path.join(root, scene)
             scene_dir = os.path.join(root, os.path.dirname(scene_path))
-            # scdet = TestTransitionDetection(int(24 * 0.3), 12)
-            # scdet = TestTransitionDetection(int(24 * 0.3), 12, fixed_max_scdet=30, use_fixed_scdet=True)
-            # scdet = TestPyScdet('threshold')
             scdet = self.get_scdet()
-            pics = glob.glob(os.path.join(scene_dir, "*.jpg"))
+            pics = glob.glob(os.path.join(glob.escape(scene_dir), "*.jpg"))
             if not os.path.isfile(scene_path):
                 scene = None
             isTP, isFP, isTN, isFN = validate_single_dir(pics, scene, scdet)
@@ -161,17 +157,12 @@ class ValCaseThread(threading.Thread):
             self.FN += 1 if isFN else 0
 
 
-root = r"examples"  # !!! change this line
-with open(os.path.join(root, "train.txt"), 'r', encoding='utf-8') as f:
-    scene_list = f.readlines()[:1000]
-
-
 def run(scdet_method: str, *args, **kwargs):
     TP, FP, TN, FN = 0, 0, 0, 0
 
     case_queue = Queue(50)
 
-    thread_cnt = 6
+    thread_cnt = 8
     thread_list = list()
     for i in range(thread_cnt):
         t = ValCaseThread(case_queue, scdet_method, *args, **kwargs)
@@ -192,22 +183,22 @@ def run(scdet_method: str, *args, **kwargs):
         TN += t.TN
         FN += t.FN
 
-    print(f"TP: {TP}, FP: {FP}, TN: {TN}, FN: {FN}")
     precision = TP / max((TP + FP), 1)
     recall = TP / max((TP + FN), 1)
     accuracy = (TP + TN) / max((TP + FP + TN + FN), 1)
-    print(f"Precision: {precision:.4f}, Recall: {recall:.4f}, Accuracy: {accuracy:.4f}")
+    print(f"TP: {TP}, FP: {FP}, TN: {TN}, FN: {FN}, Precision: {precision:.4f}, Recall: {recall:.4f}, Accuracy: {accuracy:.4f}")
 
 
 class TestScdet:
     # @pytest.mark.skip()
     @pytest.mark.parametrize('threshold', [11])
     @pytest.mark.parametrize('scdet_len', [8])
+    @pytest.mark.skip()
     def test_svfi_scdet(self, scdet_len, threshold):
         print(f"threshold: {threshold}, scdet_len: {scdet_len}")  # (12, 12), (8, 12)
         run('svfi', scdet_len, threshold)
 
-    @pytest.mark.parametrize('threshold', [16])
+    @pytest.mark.parametrize('threshold', [12, 14, 16])
     @pytest.mark.parametrize('scdet_len', [4])
     def test_svfi_scdet_hsv(self, scdet_len, threshold):
         print(f"threshold: {threshold}, scdet_len: {scdet_len}")  # (16, 4)
@@ -225,10 +216,10 @@ class TestScdet:
     def test_pyscdet_threshold(self, threshold, min_scene_len, downscale):
         run('pyscdet', method='threshold', threshold=threshold, downscale=downscale, min_scene_len=min_scene_len)
 
-    # @pytest.mark.skip()
     @pytest.mark.parametrize('threshold', [31])
     @pytest.mark.parametrize('downscale', [2])
     @pytest.mark.parametrize('min_scene_len', [2])
+    @pytest.mark.skip()
     def test_pyscdet_content(self, threshold, min_scene_len, downscale):
         print(f"threshold = {threshold}, min_scene_len = {min_scene_len}, downscale = {downscale}")  # (31, 2, 2)
         run('pyscdet', method='content', threshold=threshold, downscale=downscale, min_scene_len=min_scene_len)
@@ -236,30 +227,35 @@ class TestScdet:
     @pytest.mark.parametrize('threshold', [50, 100, 150])
     @pytest.mark.parametrize('downscale', [2])
     @pytest.mark.parametrize('min_scene_len', [5, 10])
-    # @pytest.mark.skip()
+    @pytest.mark.skip()
     def test_pyscdet_adaptive(self, threshold, min_scene_len, downscale):
         run('pyscdet', method='adaptive', threshold=threshold, downscale=downscale, min_scene_len=min_scene_len)
 
-    @pytest.mark.parametrize('threshold', [0.85, 0.9, 0.98])
+    @pytest.mark.parametrize('threshold', [0.8, 0.85, 0.9, 0.95])
     # @pytest.mark.parametrize('threshold', [0.85])
     @pytest.mark.parametrize('params', [
                                         ("sc_efficientformerv2_s0_12263_224_CHW_6ch_clamp_softmax_op17_fp16_sim.onnx", 224),
-                                        ("sc_efficientformerv2_s0 + rife46_flow_84119_224_CHW_6ch_clamp_softmax_op17_fp16.onnx", 224),
+                                        # ("sc_efficientformerv2_s0 + rife46_flow_84119_224_CHW_6ch_clamp_softmax_op17_fp16.onnx", 224),
                                         ("sc_efficientnetv2b0_17957_256_CHW_6ch_clamp_softmax_op17_fp16_sim.onnx", 256),
-                                        ("sc_efficientnetv2b0+rife46_flow_1362_256_CHW_6ch_clamp_softmax_op17_fp16_sim.onnx", 256),
+                                        # ("sc_efficientnetv2b0+rife46_flow_1362_256_CHW_6ch_clamp_softmax_op17_fp16_sim.onnx", 256),
                                         ]
                              )
     def test_styler(self, threshold, params):
         onnx_path, resize = params
-        onnx_path = os.path.join(r"D:\60-fps-Project\Projects\RIFE GUI\models\scdet", onnx_path)  # !!! change this line
+        onnx_path = os.path.join(r"D:\60-fps-Project\Projects\RIFE GUI\models\scdet", onnx_path)
         run('styler',
             onnx_path=onnx_path,
             threshold=threshold, resize=resize)
 
 
 if __name__ == '__main__':
-    # run('svfi_hsv', 8, 20, fixed_max_scdet=200)
+    root = r"F:\Datasets\scenes"
+    with open(os.path.join(root, "train.txt"), 'r', encoding='utf-8') as f:
+        scene_list = f.readlines()[:500]
+
+    run('svfi_hsv', 4, 16, fixed_max_scdet=120)
+    # TP: 279, FP: 13, TN: 189, FN: 19, Precision: 0.9555, Recall: 0.9362, Accuracy: 0.9360
+    
     # run('pyscdet', method='content', threshold=31, downscale=2, min_scene_len=2)
-    # !!! change this line
-    run('styler', onnx_path=r"D:\60-fps-Project\Projects\RIFE GUI\models\scdet\sc_efficientformerv2_s0_12263_224_CHW_6ch_clamp_softmax_op17_fp16_sim.onnx", threshold=0.9, resize=224)
+    # run('styler', onnx_path=r"D:\60-fps-Project\Projects\RIFE GUI\models\scdet\sc_efficientformerv2_s0_12263_224_CHW_6ch_clamp_softmax_op17_fp16_sim.onnx", threshold=0.9, resize=224)
     pass
